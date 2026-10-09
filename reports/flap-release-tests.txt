@@ -1,0 +1,70 @@
+Compiling 1 files with Solc 0.8.28
+Sol
+Ran 24 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
+[PASS] test10000Entries() (gas: 2319515507)
+[PASS] test1000Entries() (gas: 232235635)
+[PASS] test100Entries() (gas: 23579102)
+[PASS] testBindingCannotBeReplacedEvenIfTokenGetterChanges() (gas: 687157)
+[PASS] testBindingRejectsWrongLinksNativeModeQuoteAndDecimals() (gas: 495456)
+[PASS] testDispatchSettlementClaimAndLaterTax() (gas: 835593)
+[PASS] testEarlyTaxBeforeTokenExistsIsNotLost() (gas: 3409448)
+[PASS] testEmergencyBeforeBindingIncludesPendingAndForcedFunds() (gas: 351177)
+[PASS] testEmergencyFailedDestinationRollsBackStopAndAccounting() (gas: 1030683)
+[PASS] testEmergencyInvalidDestinationDoesNotStopRound() (gas: 69650)
+[PASS] testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() (gas: 819176)
+[PASS] testEmergencyOnlyGuardianNotDeployerOrPlayer() (gas: 84719)
+[PASS] testEmergencyPayoutReentrancyBlocked() (gas: 1014494)
+[PASS] testEmergencyStopsActive
+Ran 1 test for test/FOMO6FlapInvariant.t.sol:FOMO6FlapVaultInvariant
+[PASS] invariantAccountingStateAndWinner() (runs: 256, calls: 32768, reverts: 0)
+
+╭-----------------------+----------+-------+---------+----------╮
+| Contract              | Selector | Calls | Reverts | Discards |
++===============================================================+
+| FOMO6FlapVaultHandler | advance  | 4134  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | claim    | 4029  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | entry    | 4104  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | force    | 4138  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | forward  | 4130  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | settle   | 3980  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | tax      | 4023  | 0       | 0        |
+|-----------------------+----------+-------+---------+----------|
+| FOMO6FlapVaultHandler | wrongBNB | 4230  | 0       | 0        |
+╰-----------------------+----------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.94s (4.93s CPU time)
+
+Ran 24 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
+[PASS] test10000Entries() (gas: 2319515507)
+[PASS] test1000Entries() (gas: 232235635)
+[PASS] test100Entries() (gas: 23579102)
+[PASS] testBindingCannotBeReplacedEvenIfTokenGetterChanges() (gas: 687157)
+[PASS] testBindingRejectsWrongLinksNativeModeQuoteAndDecimals() (gas: 495456)
+[PASS] testDispatchSettlementClaimAndLaterTax() (gas: 835593)
+[PASS] testEarlyTaxBeforeTokenExistsIsNotLost() (gas: 3409448)
+[PASS] testEmergencyBeforeBindingIncludesPendingAndForcedFunds() (gas: 351177)
+[PASS] testEmergencyFailedDestinationRollsBackStopAndAccounting() (gas: 1030683)
+[PASS] testEmergencyInvalidDestinationDoesNotStopRound() (gas: 69650)
+[PASS] testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() (gas: 819176)
+[PASS] testEmergencyOnlyGuardianNotDeployerOrPlayer() (gas: 84719)
+[PASS] testEmergencyPayoutReentrancyBlocked() (gas: 1014494)
+[PASS] testEmergencyStopsActiveGameAndDoesNotExposeFalsePrize() (gas: 618249)
+[PASS] testEmergencyTokenRecoveryDoesNotSpendPlayerAllowanceOrJackpot() (gas: 1161448)
+[PASS] testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() (gas: 110238)
+[PASS] testFirstEntryBindsAndStartsClockWithoutAdmin() (gas: 585580)
+[PASS] testFuzzPendingClassification(uint96,uint96) (runs: 1000, μ: 275930, ~: 277665)
+[PASS] testLaterTaxAfterEmergencyStillReceivesAndCanBeRecovered() (gas: 453704)
+[PASS] testLaunchValidation() (gas: 37995)
+[PASS] testMaliciousWinnerReentrancyAndFailedClaimRetry() (gas: 1155801)
+[PASS] testReceiveGasBeforeAndAfterBindingBelowOfficialBudget() (gas: 254490)
+[PASS] testWrongSourceBeforeBindingAndForcedBNBNeverBecomeJackpot() (gas: 420365)
+[PASS] testZeroWakeAndMetadata() (gas: 206177)
+Suite result: ok. 24 passed; 0 failed; 0 skipped; finished in 19.20s (19.63s CPU time)
+
+Ran 2 test suites in 19.21s (24.14s CPU time): 25 tests passed, 0 failed, 0 skipped (25 total tests)

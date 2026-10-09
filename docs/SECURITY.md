@@ -1,0 +1,11 @@
+# Security assumptions and remaining work
+
+The immutable factory/vault has no deployer administration. Flap Guardian alone can recover all native funds at any time, including the unclaimed winner liability. Recovery permanently stops ordinary game writes and claims. There is no on-chain emergency proof, timelock or community approval. Guardian-only ERC20 recovery accesses vault-held tokens, not user allowances. The external Flap protocol retains separate administrative/upgrade risks.
+
+Current integrations use pinned Flap V2/native interfaces (see src/flap/UPSTREAM.md). FreeCoinV3Beacon is a reference, not copied game logic: its proxy upgrades and balance-delta recognition would change immutability and forced-fund classification. Latest Flap documentation recommends V3 interfaces and requires Beacon architecture for its low-risk badge. This candidate claims neither full current spec compliance nor that badge. Obtain Flap review before launching; no proxy migration is assumed.
+
+Only the verified processor credits revenue. Pending early receipts are classified by source when binding; unverified and forced BNB do not become prize or post-settlement taxes. Such surplus is normally inaccessible, except through Guardian emergency recovery. Receiving tax never starts or extends the timer.
+
+Settlement records already-accounted revenue at transaction execution, not all un-dispatched tax and not the exact expiry instant. Validator ordering, censorship and timestamp boundaries affect the last successful sender. UI timers are estimates. Token transfers and dispatch are external dependencies; unavailable liquidity or token/protocol failure may block participation or delay revenue.
+
+Local unit/fuzz/invariant and mass-entry tests pass. Earlier live-protocol LOCAL fork covered creation, bonding-curve buy/dispatch, entry, settlement and claim; this is not a signed Testnet deployment. Real DEX graduation, sell/liquidation paths, actual Testnet launch, independent audit and Flap generic UI approval integration remain to be validated. The separately developed website still uses a local prototype; do not wire it to this Guardian-enabled vault without emergency-state handling/disclosure.

@@ -1,0 +1,1 @@
+Canonical Flap interfaces copied without source edits from flap-sh/FlapVaultExample commit 5949cc7eb99bcb5ac5f679cc710ae456e627f12a. OpenZeppelin dependencies were copied from that same upstream checkout; the commit records their vendored contents. MIT licenses retained.

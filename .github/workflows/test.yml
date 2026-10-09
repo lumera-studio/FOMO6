@@ -1,0 +1,15 @@
+name: Foundry tests
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.8.5
+      - run: forge test --match-contract 'FOMO6Flap(Test|VaultInvariant)' -vv
+        env:
+          FOUNDRY_GAS_LIMIT: 3000000000
