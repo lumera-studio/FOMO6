@@ -207,6 +207,21 @@ contract FOMO6FlapTest is Test {
         entry(ALICE);
     }
 
+    function testEntryCollectsTaxesAndIgnoresDispatchFailure() public {
+        vm.deal(address(p), 1 ether);
+        entry(ALICE);
+        assertEq(g.jackpot(), 1 ether);
+        p.configureDispatch(true, false);
+        entry(address(0xB0B));
+        assertEq(g.lastPlayer(), address(0xB0B));
+        assertEq(g.entries(), 2);
+        assertEq(g.jackpot(), 1 ether);
+        p.configureDispatch(false, true);
+        entry(ALICE);
+        assertEq(p.blockedCallbacks(), 2);
+        assertEq(g.entries(), 3);
+    }
+
     function testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() public {
         vm.expectRevert("Only VaultPortal");
         f.newVault(address(123), address(0), ALICE, "");

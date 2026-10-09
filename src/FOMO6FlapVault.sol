@@ -44,6 +44,8 @@ contract FOMO6FlapVault is VaultBaseV2 {
     uint256 public totalEmergencyWithdrawn;
     uint256 private locked = 1;
     bool private collectingTaxes;
+    uint256 public constant AUTO_COLLECTION_GAS = 300_000;
+    event AutoTaxCollection(bool succeeded);
 
     enum State {
         WAITING,
@@ -179,6 +181,24 @@ contract FOMO6FlapVault is VaultBaseV2 {
         lastPlayer = msg.sender;
         entries++;
         emit Entry(msg.sender, deadline, entries);
+        // Bounded best effort: never make entry depend on processor success.
+        if (gasleft() > AUTO_COLLECTION_GAS + 60_000) {
+            collectingTaxes = true;
+            locked = 1;
+            address processor = taxProcessor;
+            bytes4 selector = ITaxProcessor.dispatch.selector;
+            bool collected;
+            assembly ("memory-safe") {
+                let ptr := mload(0x40)
+                mstore(ptr, selector)
+                collected := call(300000, processor, 0, ptr, 4, 0, 0)
+            }
+            locked = 2;
+            collectingTaxes = false;
+            emit AutoTaxCollection(collected);
+        } else {
+            emit AutoTaxCollection(false);
+        }
     }
 
     function state() external view returns (State) {
@@ -270,8 +290,8 @@ contract FOMO6FlapVault is VaultBaseV2 {
         schema.vaultType = "FOMO6";
         schema.description =
             "20,000 tokens burned per entry. First entry starts six hours; later entries add 30 seconds, capped at six hours remaining. Only verified BNB tax revenue funds the prize. Flap Guardian can emergency-withdraw all funds and permanently stop the round.";
-        schema.methods = new VaultMethodSchema[](14);
-        string[14] memory names = [
+        schema.methods = new VaultMethodSchema[](15);
+        string[15] memory names = [
             "ENTRY_AMOUNT",
             "deadline",
             "jackpot",
@@ -285,9 +305,10 @@ contract FOMO6FlapVault is VaultBaseV2 {
             "withdrawPostSettlementTaxes",
             "emergencyStopped",
             "emergencyWithdrawNative",
-            "emergencyWithdrawToken"
+            "emergencyWithdrawToken",
+            "collectTaxes"
         ];
-        for (uint256 i; i < 14; ++i) {
+        for (uint256 i; i < 15; ++i) {
             VaultMethodSchema memory m;
             m.name = names[i];
             m.description = names[i];

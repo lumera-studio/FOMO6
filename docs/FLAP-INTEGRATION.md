@@ -70,3 +70,5 @@ At launch use Custom Vault, factory address, V3 token, BNB quote,3% buy/3% sell,
 ## Permissionless tax collection
 
 `collectTaxes()` verifies/binds the token processor and calls its `dispatch()`. Only native BNB actually delivered through the verified receipt path is credited. It does not start or extend the timer. Collection after settlement credits post-settlement taxes, not the winner. Pending unswapped token taxes are not forcibly liquidated. Dispatch failure reverts collection; entry and settlement do not depend on collection success. All game actions are blocked during dispatch, while its native receipt callback is accepted.
+
+`enter()` now attempts dispatch after a valid entry, with 300,000 gas forwarded and 60,000 gas headroom required. Processor failure or insufficient headroom emits AutoTaxCollection(false) and leaves the entry valid. No return data is copied. Explicit collectTaxes remains available to retry complex dispatches. The bound is a gas budget, not a production fee estimate; real processor gas must be measured on a protocol fork and Testnet. collectTaxes is exposed in vaultUISchema.
