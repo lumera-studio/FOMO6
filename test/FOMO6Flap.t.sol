@@ -50,6 +50,10 @@ contract FlapMockProcessor {
     address public constant weth = address(0xBB);
     address public quote = weth;
     bool public native = true;
+    bool public failDispatch;
+    bool public attackDispatch;
+    uint256 public blockedCallbacks;
+    function configureDispatch(bool fail, bool attack) external { failDispatch = fail; attackDispatch = attack; }
 
     constructor(address t, address m) {
         taxToken = t;
@@ -72,7 +76,14 @@ contract FlapMockProcessor {
     }
 
     function dispatch() external payable {
-        (bool ok,) = marketAddress.call{value: msg.value}("");
+        require(!failDispatch, "Processor failure");
+        if (attackDispatch) {
+            (bool recursive,) = marketAddress.call(abi.encodeWithSignature("collectTaxes()"));
+            (bool settlement,) = marketAddress.call(abi.encodeWithSignature("settle()"));
+            require(!recursive && !settlement, "Unsafe callback");
+            blockedCallbacks += 2;
+        }
+        (bool ok,) = marketAddress.call{value: address(this).balance}("");
         require(ok, "Dispatch failed");
     }
 }
@@ -163,6 +174,37 @@ contract FOMO6FlapTest is Test {
 
     function tax(uint256 n) internal {
         p.dispatch{value: n}();
+    }
+
+    function testCollectTaxesPermissionlessDoesNotStartTimerAndRoutesLaterTaxes() public {
+        vm.deal(address(p), 1 ether);
+        vm.prank(ALICE);
+        g.collectTaxes();
+        assertEq(g.jackpot(), 1 ether);
+        assertEq(g.deadline(), 0);
+        g.collectTaxes();
+        assertEq(g.jackpot(), 1 ether);
+        entry(ALICE);
+        vm.warp(g.deadline());
+        g.settle();
+        vm.deal(address(p), 2 ether);
+        g.collectTaxes();
+        assertEq(g.prizeAtSettlement(), 1 ether);
+        assertEq(g.postSettlementTaxes(), 2 ether);
+    }
+
+    function testCollectionFailureRollsBackAndCallbacksAreBlocked() public {
+        vm.deal(address(p), 1 ether);
+        p.configureDispatch(true, false);
+        vm.expectRevert(bytes("Processor failure"));
+        g.collectTaxes();
+        assertEq(g.taxProcessor(), address(0));
+        assertEq(g.jackpot(), 0);
+        p.configureDispatch(false, true);
+        g.collectTaxes();
+        assertEq(p.blockedCallbacks(), 2);
+        assertEq(g.jackpot(), 1 ether);
+        entry(ALICE);
     }
 
     function testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() public {

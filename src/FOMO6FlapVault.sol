@@ -43,6 +43,7 @@ contract FOMO6FlapVault is VaultBaseV2 {
     uint256 public emergencyReceipts;
     uint256 public totalEmergencyWithdrawn;
     uint256 private locked = 1;
+    bool private collectingTaxes;
 
     enum State {
         WAITING,
@@ -113,14 +114,16 @@ contract FOMO6FlapVault is VaultBaseV2 {
     }
 
     modifier nonReentrant() {
-        if (locked != 1) revert ReentrantCall();
+        if (locked != 1 || collectingTaxes) revert ReentrantCall();
         locked = 2;
         _;
         locked = 1;
     }
 
     /// @dev Revenue never starts the clock. No external calls on receipt.
-    receive() external payable nonReentrant {
+    receive() external payable {
+        if (locked != 1) revert ReentrantCall();
+        // Receipt makes no external calls; allow the verified dispatch callback.
         if (emergencyStopped) {
             emergencyReceipts += msg.value;
             emit EmergencyReceipt(msg.sender, msg.value);
@@ -139,6 +142,17 @@ contract FOMO6FlapVault is VaultBaseV2 {
         if (settled) postSettlementTaxes += msg.value;
         else jackpot += msg.value;
         emit TaxReceived(msg.sender, msg.value, settled);
+    }
+
+    /// @notice Anyone may request distribution of accumulated, processed taxes.
+    /// @dev Block game actions during dispatch, but permit its native receipt callback.
+    function collectTaxes() external nonReentrant {
+        _bind();
+        collectingTaxes = true;
+        locked = 1;
+        ITaxProcessor(taxProcessor).dispatch();
+        locked = 2;
+        collectingTaxes = false;
     }
 
     /// @notice Approve at least ENTRY_AMOUNT first. Successful entries transfer directly to DEAD.
