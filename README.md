@@ -8,7 +8,7 @@ Open-source, single-round Last Sender Wins experiment for BNB Chain, using a Fla
 - First entry starts six hours. Later entries add 30 seconds, capped at six hours remaining. Entries at or after the deadline revert.
 - Anyone may settle once. Last successful sender wins; only the winner may claim the complete recorded jackpot once, only to the winner address.
 - Verified native BNB tax receipts fund the jackpot. At settlement the prize is fixed; subsequent receipts belong only to the immutable recipient chosen when deploying the factory. Anyone may trigger their withdrawal to that fixed recipient.
-- Taxes received after expiry but before settlement still belong to the jackpot. No automatic settlement, payout or restart. No buyback functionality.
+- A verified tax receipt after expiry settles the existing jackpot before crediting the new tax to the fixed recipient. It attempts automatic winner and recipient payments; failed payments remain claimable. Without a new receipt, manual settlement is needed. No restart or buyback.
 - No owner, configurable game rules, proxy or upgrades. **Flap Guardian has an explicit emergency exception: it may withdraw ALL vault BNB, including an unclaimed prize, and permanently stop the round.** See `docs/SECURITY.md`.
 
 ## Main sources

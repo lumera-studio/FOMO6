@@ -190,7 +190,8 @@ contract FOMO6FlapTest is Test {
         vm.deal(address(p), 2 ether);
         g.collectTaxes();
         assertEq(g.prizeAtSettlement(), 1 ether);
-        assertEq(g.postSettlementTaxes(), 2 ether);
+        assertEq(g.postSettlementTaxes(), 0);
+        assertEq(FEE.balance, 2 ether);
     }
 
     function testCollectionFailureRollsBackAndCallbacksAreBlocked() public {
@@ -220,6 +221,32 @@ contract FOMO6FlapTest is Test {
         entry(ALICE);
         assertEq(p.blockedCallbacks(), 2);
         assertEq(g.entries(), 3);
+    }
+
+    function testAutomaticPayoutFailuresPreserveBothClaims() public {
+        FlapAdversarialWinner w = new FlapAdversarialWinner(g);
+        t.mint(address(w), 20000 ether);
+        w.enter(t);
+        tax(1 ether);
+        w.configure(true);
+        vm.etch(FEE, hex"60006000fd");
+        vm.warp(g.deadline());
+        tax(2 ether);
+        assertTrue(g.settled());
+        assertFalse(g.claimed());
+        assertEq(g.jackpot(), 1 ether);
+        assertEq(g.postSettlementTaxes(), 2 ether);
+        assertEq(g.prizeAtSettlement(), 1 ether);
+        vm.expectRevert(FOMO6FlapVault.AlreadySettled.selector);
+        g.settle();
+        w.configure(false);
+        w.claim();
+        vm.etch(FEE, hex"");
+        g.withdrawPostSettlementTaxes();
+        assertEq(address(w).balance, 1 ether);
+        assertEq(FEE.balance, 2 ether);
+        assertEq(g.jackpot(), 0);
+        assertEq(g.postSettlementTaxes(), 0);
     }
 
     function testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() public {
@@ -313,16 +340,13 @@ contract FOMO6FlapTest is Test {
         entry(ALICE);
         vm.warp(g.deadline());
         tax(2 ether);
-        g.settle();
         tax(3 ether);
         assertEq(g.winner(), ALICE);
-        assertEq(g.prizeAtSettlement(), 3 ether);
-        assertEq(g.postSettlementTaxes(), 3 ether);
-        vm.prank(ALICE);
-        g.claim();
-        g.withdrawPostSettlementTaxes();
-        assertEq(ALICE.balance, 3 ether);
-        assertEq(FEE.balance, 3 ether);
+        assertEq(g.prizeAtSettlement(), 1 ether);
+        assertEq(g.postSettlementTaxes(), 0);
+        assertTrue(g.claimed());
+        assertEq(ALICE.balance, 1 ether);
+        assertEq(FEE.balance, 5 ether);
         vm.expectRevert(FOMO6FlapVault.AlreadySettled.selector);
         g.settle();
         vm.prank(ALICE);
@@ -475,8 +499,10 @@ contract FOMO6FlapTest is Test {
         g.emergencyWithdrawNative(address(0xCAFE));
         assertEq(g.winner(), ALICE);
         assertEq(g.prizeAtSettlement(), 1 ether);
-        assertEq(g.jackpotAtEmergency(), 1 ether);
-        assertEq(g.postTaxesAtEmergency(), 2 ether);
+        assertEq(g.jackpotAtEmergency(), 0);
+        assertEq(g.postTaxesAtEmergency(), 0);
+        assertEq(ALICE.balance, 1 ether);
+        assertEq(FEE.balance, 2 ether);
         assertEq(g.jackpot(), 0);
         assertEq(g.postSettlementTaxes(), 0);
         vm.prank(ALICE);

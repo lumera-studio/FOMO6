@@ -122,10 +122,10 @@ contract FOMO6FlapVault is VaultBaseV2 {
         locked = 1;
     }
 
-    /// @dev Revenue never starts the clock. No external calls on receipt.
+    /// @dev Revenue never starts the clock. Expired receipts settle and attempt bounded payments.
     receive() external payable {
         if (locked != 1) revert ReentrantCall();
-        // Receipt makes no external calls; allow the verified dispatch callback.
+        // Accept the verified dispatch callback, then lock before external payments.
         if (emergencyStopped) {
             emergencyReceipts += msg.value;
             emit EmergencyReceipt(msg.sender, msg.value);
@@ -140,10 +140,18 @@ contract FOMO6FlapVault is VaultBaseV2 {
             return;
         }
         if (msg.sender != taxProcessor) revert UnauthorizedTaxSource();
+        locked = 2;
+        // Expired receipts belong to the fixed recipient, not the frozen prize.
+        if (!settled && deadline != 0 && block.timestamp >= deadline) _settle();
         totalTaxesReceived += msg.value;
         if (settled) postSettlementTaxes += msg.value;
         else jackpot += msg.value;
         emit TaxReceived(msg.sender, msg.value, settled);
+        if (settled) {
+            _tryWinnerPayment();
+            _tryPostTaxPayment();
+        }
+        locked = 1;
     }
 
     /// @notice Anyone may request distribution of accumulated, processed taxes.
@@ -212,10 +220,46 @@ contract FOMO6FlapVault is VaultBaseV2 {
         if (emergencyStopped) revert EmergencyStopped();
         if (settled) revert AlreadySettled();
         if (deadline == 0 || block.timestamp < deadline) revert NotEnded();
+        _settle();
+    }
+
+    function _settle() private {
         settled = true;
         winner = lastPlayer;
         prizeAtSettlement = jackpot;
         emit Settled(winner, jackpot);
+    }
+
+    event AutomaticPaymentFailed(address indexed recipient, uint256 amount);
+
+    function _boundedPay(address recipient, uint256 amount) private returns (bool ok) {
+        assembly ("memory-safe") { ok := call(30000, recipient, amount, 0, 0, 0, 0) }
+    }
+
+    function _tryWinnerPayment() private {
+        if (claimed) return;
+        uint256 amount = jackpot;
+        claimed = true;
+        jackpot = 0;
+        if (amount == 0 || _boundedPay(winner, amount)) {
+            emit Claimed(winner, winner, amount);
+        } else {
+            claimed = false;
+            jackpot = amount;
+            emit AutomaticPaymentFailed(winner, amount);
+        }
+    }
+
+    function _tryPostTaxPayment() private {
+        uint256 amount = postSettlementTaxes;
+        if (amount == 0) return;
+        postSettlementTaxes = 0;
+        if (_boundedPay(postSettlementRecipient, amount)) {
+            emit PostSettlementTaxesWithdrawn(postSettlementRecipient, amount);
+        } else {
+            postSettlementTaxes = amount;
+            emit AutomaticPaymentFailed(postSettlementRecipient, amount);
+        }
     }
 
     function claim() external nonReentrant {

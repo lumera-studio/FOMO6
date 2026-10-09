@@ -58,8 +58,16 @@ contract FOMO6FlapVaultHandler is Test {
         vm.prank(PROCESSOR);
         (bool ok,) = address(game).call{value: amount}("");
         assertTrue(ok);
-        if (settled) postTaxes += amount;
-        else preTaxes += amount;
+        if (!settled && modelDeadline != 0 && block.timestamp >= modelDeadline) {
+            settled = true;
+            winner = last;
+        }
+        if (settled) {
+            postTaxes += amount;
+            postPaid = postTaxes;
+            claimed = true;
+            prizePaid = preTaxes;
+        } else preTaxes += amount;
     }
 
     function force(uint96 seed) external {
