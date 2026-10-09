@@ -82,7 +82,7 @@ contract FOMO6FlapVaultHandler is Test {
     function claim(bool authorized) external {
         address caller = authorized && winner != address(0) ? winner : address(this);
         vm.prank(caller);
-        (bool ok,) = address(game).call(abi.encodeCall(game.claim, (payable(PAYOUT))));
+        (bool ok,) = address(game).call(abi.encodeCall(game.claim, ()));
         bool expected = settled && !claimed && caller == winner;
         assertEq(ok, expected);
         if (ok) {
@@ -148,7 +148,7 @@ contract FOMO6FlapVaultInvariant is StdInvariant, Test {
         assertEq(g.prizeAtSettlement(), h.settled() ? h.preTaxes() : 0);
         assertEq(address(g).balance, g.jackpot() + g.postSettlementTaxes() + h.forced());
         assertEq(address(0xFEE).balance, h.postPaid());
-        assertEq(address(0xCAFE).balance, h.prizePaid());
+        if (h.winner() != address(0)) assertEq(h.winner().balance, h.prizePaid());
         uint256 state = h.settled() ? 3 : (h.modelDeadline() == 0 ? 0 : (block.timestamp < h.modelDeadline() ? 1 : 2));
         assertEq(uint256(g.state()), state);
         if (state == 1) assertLe(g.deadline() - block.timestamp, 21600);

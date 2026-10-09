@@ -118,13 +118,13 @@ contract FlapAdversarialWinner {
         game.enter();
     }
 
-    function claim(address payable recipient) external {
-        game.claim(recipient);
+    function claim() external {
+        game.claim();
     }
 
     receive() external payable {
         require(!reject);
-        (bool a,) = address(game).call(abi.encodeCall(game.claim, (payable(address(this)))));
+        (bool a,) = address(game).call(abi.encodeCall(game.claim, ()));
         (bool b,) = address(game).call(abi.encodeCall(game.settle, ()));
         (bool c,) = address(game).call(abi.encodeCall(game.bindTaxProcessor, ()));
         (bool d,) = address(game).call(abi.encodeCall(game.enter, ()));
@@ -262,7 +262,7 @@ contract FOMO6FlapTest is Test {
         assertEq(g.prizeAtSettlement(), 3 ether);
         assertEq(g.postSettlementTaxes(), 3 ether);
         vm.prank(ALICE);
-        g.claim(payable(ALICE));
+        g.claim();
         g.withdrawPostSettlementTaxes();
         assertEq(ALICE.balance, 3 ether);
         assertEq(FEE.balance, 3 ether);
@@ -270,7 +270,25 @@ contract FOMO6FlapTest is Test {
         g.settle();
         vm.prank(ALICE);
         vm.expectRevert(FOMO6FlapVault.AlreadyClaimed.selector);
-        g.claim(payable(ALICE));
+        g.claim();
+    }
+
+    function testWinnerCannotRedirectPrizeAndOthersCannotClaim() public {
+        tax(1 ether);
+        entry(ALICE);
+        vm.warp(g.deadline());
+        g.settle();
+        vm.prank(FEE);
+        vm.expectRevert(FOMO6FlapVault.NotWinner.selector);
+        g.claim();
+        vm.prank(ALICE);
+        (bool ok,) = address(g).call(abi.encodeWithSignature("claim(address)", FEE));
+        assertFalse(ok);
+        assertFalse(g.claimed());
+        vm.prank(ALICE);
+        g.claim();
+        assertEq(ALICE.balance, 1 ether);
+        assertEq(FEE.balance, 0);
     }
 
     function testReceiveGasBeforeAndAfterBindingBelowOfficialBudget() public {
@@ -301,11 +319,11 @@ contract FOMO6FlapTest is Test {
         g.settle();
         winner.configure(true);
         vm.expectRevert(FOMO6FlapVault.TransferFailed.selector);
-        winner.claim(payable(address(winner)));
+        winner.claim();
         assertFalse(g.claimed());
         assertEq(g.jackpot(), 1 ether);
         winner.configure(false);
-        winner.claim(payable(address(winner)));
+        winner.claim();
         assertEq(winner.blocked(), 5);
         assertEq(address(winner).balance, 1 ether);
     }
@@ -329,8 +347,8 @@ contract FOMO6FlapTest is Test {
         g.settle();
         assertEq(g.winner(), last);
         vm.prank(last);
-        g.claim(payable(ALICE));
-        assertEq(ALICE.balance, n * 0.001 ether);
+        g.claim();
+        assertEq(last.balance, n * 0.001 ether);
     }
 
     function test100Entries() public {
@@ -406,7 +424,7 @@ contract FOMO6FlapTest is Test {
         assertEq(g.postSettlementTaxes(), 0);
         vm.prank(ALICE);
         vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.claim(payable(ALICE));
+        g.claim();
         vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
         g.withdrawPostSettlementTaxes();
     }

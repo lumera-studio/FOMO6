@@ -1,4 +1,4 @@
-# FOMO6 Contracts
+# FOMO6
 
 Open-source, single-round Last Sender Wins experiment for BNB Chain, using a Flap tax token. **Development candidate: not deployed to BSC Testnet or Mainnet; not independently audited or Flap-verified.**
 
@@ -6,7 +6,7 @@ Open-source, single-round Last Sender Wins experiment for BNB Chain, using a Fla
 
 - Each successful entry transfers exactly 20,000 18-decimal tokens to the fixed DEAD address. This removes tokens from circulation; it does not reduce ERC20 totalSupply.
 - First entry starts six hours. Later entries add 30 seconds, capped at six hours remaining. Entries at or after the deadline revert.
-- Anyone may settle once. Last successful sender wins; only the winner may claim the complete recorded jackpot once, to a chosen recipient.
+- Anyone may settle once. Last successful sender wins; only the winner may claim the complete recorded jackpot once, only to the winner address.
 - Verified native BNB tax receipts fund the jackpot. At settlement the prize is fixed; subsequent receipts belong only to the immutable recipient chosen when deploying the factory. Anyone may trigger their withdrawal to that fixed recipient.
 - Taxes received after expiry but before settlement still belong to the jackpot. No automatic settlement, payout or restart. No buyback functionality.
 - No owner, configurable game rules, proxy or upgrades. **Flap Guardian has an explicit emergency exception: it may withdraw ALL vault BNB, including an unclaimed prize, and permanently stop the round.** See `docs/SECURITY.md`.
@@ -23,7 +23,7 @@ Install Foundry, then run from this folder:
 FOUNDRY_GAS_LIMIT=3000000000 forge test --match-contract 'FOMO6Flap(Test|VaultInvariant)' -vv
 ```
 
-Solidity 0.8.28, optimizer 200, Paris. Vendored dependencies and licenses are included. Latest local result: 25 tests pass, including 1,000 fuzz runs, 256 x 128 invariant actions, malicious winner/reentrancy, emergency recovery, and 100/1,000/10,000 entries. The enlarged test gas limit is for aggregation; it is not a production block limit.
+Solidity 0.8.28, optimizer 200, Paris. Vendored dependencies and licenses are included. Latest local result: 26 tests pass, including 1,000 fuzz runs, 256 x 128 invariant actions, malicious winner/reentrancy, emergency recovery, and 100/1,000/10,000 entries. The enlarged test gas limit is for aggregation; it is not a production block limit.
 
 An optional LOCAL fork test reads live public BSC state but never broadcasts:
 

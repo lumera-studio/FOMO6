@@ -184,17 +184,16 @@ contract FOMO6FlapVault is VaultBaseV2 {
         emit Settled(winner, jackpot);
     }
 
-    function claim(address payable recipient) external nonReentrant {
+    function claim() external nonReentrant {
         if (emergencyStopped) revert EmergencyStopped();
         if (!settled) revert NotSettled();
         if (msg.sender != winner) revert NotWinner();
         if (claimed) revert AlreadyClaimed();
-        if (recipient == address(0) || recipient == address(this)) revert InvalidRecipient();
         uint256 amount = jackpot;
         claimed = true;
         jackpot = 0;
-        _pay(recipient, amount);
-        emit Claimed(winner, recipient, amount);
+        _pay(payable(winner), amount);
+        emit Claimed(winner, winner, amount);
     }
 
     /// @notice Anyone can forward post-settlement taxes, only to the fixed recipient.
@@ -278,7 +277,7 @@ contract FOMO6FlapVault is VaultBaseV2 {
             VaultMethodSchema memory m;
             m.name = names[i];
             m.description = names[i];
-            m.inputs = new FieldDescriptor[](i == 13 ? 2 : (i == 9 || i == 12 ? 1 : 0));
+            m.inputs = new FieldDescriptor[](i == 13 ? 2 : (i == 12 ? 1 : 0));
             m.outputs = new FieldDescriptor[](i < 6 || i == 11 ? 1 : 0);
             m.approvals = new ApproveAction[](0);
             m.isWriteMethod = i >= 6 && i != 11;
@@ -296,7 +295,6 @@ contract FOMO6FlapVault is VaultBaseV2 {
                     i == 0 || i == 2 || i == 5 ? 18 : 0
                 );
             }
-            if (i == 9) m.inputs[0] = FieldDescriptor("recipient", "address", "Winner-selected payout destination", 0);
             schema.methods[i] = m;
         }
         // Fixed-price enter() has no amount input. Read ENTRY_AMOUNT and approve via the DApp.

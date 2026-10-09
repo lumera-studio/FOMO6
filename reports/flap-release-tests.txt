@@ -1,70 +1,70 @@
-Compiling 1 files with Solc 0.8.28
-Sol
-Ran 24 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
-[PASS] test10000Entries() (gas: 2319515507)
-[PASS] test1000Entries() (gas: 232235635)
-[PASS] test100Entries() (gas: 23579102)
-[PASS] testBindingCannotBeReplacedEvenIfTokenGetterChanges() (gas: 687157)
-[PASS] testBindingRejectsWrongLinksNativeModeQuoteAndDecimals() (gas: 495456)
-[PASS] testDispatchSettlementClaimAndLaterTax() (gas: 835593)
-[PASS] testEarlyTaxBeforeTokenExistsIsNotLost() (gas: 3409448)
-[PASS] testEmergencyBeforeBindingIncludesPendingAndForcedFunds() (gas: 351177)
-[PASS] testEmergencyFailedDestinationRollsBackStopAndAccounting() (gas: 1030683)
-[PASS] testEmergencyInvalidDestinationDoesNotStopRound() (gas: 69650)
-[PASS] testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() (gas: 819176)
-[PASS] testEmergencyOnlyGuardianNotDeployerOrPlayer() (gas: 84719)
-[PASS] testEmergencyPayoutReentrancyBlocked() (gas: 1014494)
-[PASS] testEmergencyStopsActive
+Compiling 2 files with Solc 0.8.28
+Solc 0.8.28 finished in 1.63s
+Compiler run successful with warnings:
+Warning (5159): "selfdestruct" has been deprecated. Note that, starting from the Cancun hard fork, the underlying opcode no longer deletes the code and data associated with an account and only transfers its Ether to the beneficiary, unless executed in the same transaction in which the contract was created (see EIP-6780). Any use in newly deployed contracts is strongly discouraged even if the new behavior is taken into account. Future changes to the EVM might further reduce the functionality of the opcode.
+  --> test/helpers/FOMO6Mocks.sol:99:9:
+   |
+99 |         selfdestruct(target);
+   |         ^^^^^^^^^^^^
+
+Warning (2018): Function state mutability can be restricted to view
+   --> test/FOMO6Flap.t.sol:501:5:
+    |
+501 |     function testLaunchValidation() public {
+    |     ^ (Relevant source part starts here and spans across multiple lines).
+
+
 Ran 1 test for test/FOMO6FlapInvariant.t.sol:FOMO6FlapVaultInvariant
 [PASS] invariantAccountingStateAndWinner() (runs: 256, calls: 32768, reverts: 0)
 
 ╭-----------------------+----------+-------+---------+----------╮
 | Contract              | Selector | Calls | Reverts | Discards |
 +===============================================================+
-| FOMO6FlapVaultHandler | advance  | 4134  | 0       | 0        |
+| FOMO6FlapVaultHandler | advance  | 4069  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | claim    | 4029  | 0       | 0        |
+| FOMO6FlapVaultHandler | claim    | 4117  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | entry    | 4104  | 0       | 0        |
+| FOMO6FlapVaultHandler | entry    | 4090  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | force    | 4138  | 0       | 0        |
+| FOMO6FlapVaultHandler | force    | 4114  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | forward  | 4130  | 0       | 0        |
+| FOMO6FlapVaultHandler | forward  | 4176  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | settle   | 3980  | 0       | 0        |
+| FOMO6FlapVaultHandler | settle   | 4072  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | tax      | 4023  | 0       | 0        |
+| FOMO6FlapVaultHandler | tax      | 4078  | 0       | 0        |
 |-----------------------+----------+-------+---------+----------|
-| FOMO6FlapVaultHandler | wrongBNB | 4230  | 0       | 0        |
+| FOMO6FlapVaultHandler | wrongBNB | 4052  | 0       | 0        |
 ╰-----------------------+----------+-------+---------+----------╯
 
-Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.94s (4.93s CPU time)
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 4.55s (4.54s CPU time)
 
-Ran 24 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
-[PASS] test10000Entries() (gas: 2319515507)
-[PASS] test1000Entries() (gas: 232235635)
-[PASS] test100Entries() (gas: 23579102)
+Ran 25 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
+[PASS] test10000Entries() (gas: 2320147876)
+[PASS] test1000Entries() (gas: 232273982)
+[PASS] test100Entries() (gas: 23558049)
 [PASS] testBindingCannotBeReplacedEvenIfTokenGetterChanges() (gas: 687157)
 [PASS] testBindingRejectsWrongLinksNativeModeQuoteAndDecimals() (gas: 495456)
-[PASS] testDispatchSettlementClaimAndLaterTax() (gas: 835593)
-[PASS] testEarlyTaxBeforeTokenExistsIsNotLost() (gas: 3409448)
+[PASS] testDispatchSettlementClaimAndLaterTax() (gas: 835136)
+[PASS] testEarlyTaxBeforeTokenExistsIsNotLost() (gas: 3354860)
 [PASS] testEmergencyBeforeBindingIncludesPendingAndForcedFunds() (gas: 351177)
-[PASS] testEmergencyFailedDestinationRollsBackStopAndAccounting() (gas: 1030683)
-[PASS] testEmergencyInvalidDestinationDoesNotStopRound() (gas: 69650)
-[PASS] testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() (gas: 819176)
-[PASS] testEmergencyOnlyGuardianNotDeployerOrPlayer() (gas: 84719)
-[PASS] testEmergencyPayoutReentrancyBlocked() (gas: 1014494)
-[PASS] testEmergencyStopsActiveGameAndDoesNotExposeFalsePrize() (gas: 618249)
+[PASS] testEmergencyFailedDestinationRollsBackStopAndAccounting() (gas: 1026871)
+[PASS] testEmergencyInvalidDestinationDoesNotStopRound() (gas: 69606)
+[PASS] testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() (gas: 818931)
+[PASS] testEmergencyOnlyGuardianNotDeployerOrPlayer() (gas: 84697)
+[PASS] testEmergencyPayoutReentrancyBlocked() (gas: 1010470)
+[PASS] testEmergencyStopsActiveGameAndDoesNotExposeFalsePrize() (gas: 618359)
 [PASS] testEmergencyTokenRecoveryDoesNotSpendPlayerAllowanceOrJackpot() (gas: 1161448)
 [PASS] testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() (gas: 110238)
-[PASS] testFirstEntryBindsAndStartsClockWithoutAdmin() (gas: 585580)
-[PASS] testFuzzPendingClassification(uint96,uint96) (runs: 1000, μ: 275930, ~: 277665)
-[PASS] testLaterTaxAfterEmergencyStillReceivesAndCanBeRecovered() (gas: 453704)
+[PASS] testFirstEntryBindsAndStartsClockWithoutAdmin() (gas: 585712)
+[PASS] testFuzzPendingClassification(uint96,uint96) (runs: 1000, μ: 275675, ~: 277665)
+[PASS] testLaterTaxAfterEmergencyStillReceivesAndCanBeRecovered() (gas: 453660)
 [PASS] testLaunchValidation() (gas: 37995)
-[PASS] testMaliciousWinnerReentrancyAndFailedClaimRetry() (gas: 1155801)
+[PASS] testMaliciousWinnerReentrancyAndFailedClaimRetry() (gas: 1150636)
 [PASS] testReceiveGasBeforeAndAfterBindingBelowOfficialBudget() (gas: 254490)
+[PASS] testWinnerCannotRedirectPrizeAndOthersCannotClaim() (gas: 608358)
 [PASS] testWrongSourceBeforeBindingAndForcedBNBNeverBecomeJackpot() (gas: 420365)
-[PASS] testZeroWakeAndMetadata() (gas: 206177)
-Suite result: ok. 24 passed; 0 failed; 0 skipped; finished in 19.20s (19.63s CPU time)
+[PASS] testZeroWakeAndMetadata() (gas: 201593)
+Suite result: ok. 25 passed; 0 failed; 0 skipped; finished in 18.31s (18.71s CPU time)
 
-Ran 2 test suites in 19.21s (24.14s CPU time): 25 tests passed, 0 failed, 0 skipped (25 total tests)
+Ran 2 test suites in 18.32s (22.86s CPU time): 26 tests passed, 0 failed, 0 skipped (26 total tests)

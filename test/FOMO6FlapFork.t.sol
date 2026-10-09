@@ -72,9 +72,10 @@ contract FOMO6FlapForkTest is Test {
         vm.warp(game.deadline());
         game.settle();
         uint256 prize = game.jackpot();
+        uint256 beforeClaim = alice.balance;
         vm.prank(alice);
-        game.claim(payable(address(0xCAFE)));
-        assertEq(address(0xCAFE).balance, prize);
+        game.claim();
+        assertEq(alice.balance, beforeClaim + prize);
         assertEq(game.jackpot(), 0);
         assertTrue(game.claimed());
     }
