@@ -8,14 +8,8 @@ import {FOMO6FlapVault} from "./FOMO6FlapVault.sol";
 
 /// @notice No owner, proxy, commission or mutable game parameters.
 contract FOMO6FlapFactory is VaultFactoryBaseV2 {
-    address public immutable postSettlementRecipient;
     mapping(address => address) public vaultForToken;
     event VaultCreated(address indexed token, address indexed vault, address indexed creator);
-
-    constructor(address recipient) {
-        require(recipient != address(0), "Zero recipient");
-        postSettlementRecipient = recipient;
-    }
 
     function newVault(address predictedToken, address quoteToken, address creator, bytes calldata data)
         external
@@ -27,7 +21,7 @@ contract FOMO6FlapFactory is VaultFactoryBaseV2 {
         require(data.length == 0, "No configurable parameters");
         require(predictedToken != address(0) && predictedToken.code.length == 0, "Token must be predicted");
         require(vaultForToken[predictedToken] == address(0), "Duplicate token");
-        vault = address(new FOMO6FlapVault(predictedToken, postSettlementRecipient));
+        vault = address(new FOMO6FlapVault(predictedToken));
         vaultForToken[predictedToken] = vault;
         emit VaultCreated(predictedToken, vault, creator);
     }
@@ -38,7 +32,7 @@ contract FOMO6FlapFactory is VaultFactoryBaseV2 {
 
     function vaultDataSchema() public pure override returns (VaultDataSchema memory schema) {
         schema.description =
-            "FOMO6: 20,000-token burn entries, six-hour cap, +30 seconds. Fixed post-settlement recipient. No configurable parameters.";
+            "FOMO6: 20,000-token burn entries, six-hour cap, +120 seconds. Repeating rounds; all received taxes fund jackpots. No configurable parameters.";
         schema.fields = new FieldDescriptor[](0);
     }
 

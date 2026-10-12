@@ -1,0 +1,53 @@
+Compiling 4 files with Solc 0.8.28
+Solc 0.8.28 finished in 1.69s
+Compiler run successful with warnings:
+Warning (5159): "selfdestruct" has been deprecated. Note that, starting from the Cancun hard fork, the underlying opcode no longer deletes the code and data associated with an account and only transfers its Ether to the beneficiary, unless executed in the same transaction in which the contract was created (see EIP-6780). Any use in newly deployed contracts is strongly discouraged even if the new behavior is taken into account. Future changes to the EVM might further reduce the functionality of the opcode.
+   --> test/FOMO6Flap.t.sol:125:9:
+    |
+125 |         selfdestruct(to);
+    |         ^^^^^^^^^^^^
+
+
+Ran 1 test for test/FOMO6FlapInvariant.t.sol:FOMO6FlapVaultInvariant
+[PASS] invariantIndependentAccountingAndRounds() (runs: 256, calls: 32768, reverts: 0)
+
+╭-------------------+----------+-------+---------+----------╮
+| Contract          | Selector | Calls | Reverts | Discards |
++===========================================================+
+| MultiRoundHandler | advance  | 6537  | 0       | 0        |
+|-------------------+----------+-------+---------+----------|
+| MultiRoundHandler | entry    | 6446  | 0       | 0        |
+|-------------------+----------+-------+---------+----------|
+| MultiRoundHandler | force    | 6638  | 0       | 0        |
+|-------------------+----------+-------+---------+----------|
+| MultiRoundHandler | settle   | 6544  | 0       | 0        |
+|-------------------+----------+-------+---------+----------|
+| MultiRoundHandler | tax      | 6603  | 0       | 0        |
+╰-------------------+----------+-------+---------+----------╯
+
+Suite result: ok. 1 passed; 0 failed; 0 skipped; finished in 3.33s (3.33s CPU time)
+
+Ran 20 tests for test/FOMO6Flap.t.sol:FOMO6FlapTest
+[PASS] test10000Entries() (gas: 1729554537)
+[PASS] test1000Entries() (gas: 173238665)
+[PASS] test100Entries() (gas: 17678532)
+[PASS] testBindingCannotBeChanged() (gas: 715137)
+[PASS] testBoundaryBeforeAndAtDeadline() (gas: 593511)
+[PASS] testClaimsCannotRedirectOrSteal() (gas: 685017)
+[PASS] testEarlyReceiptsOnlyVerifiedSourceCredited() (gas: 481445)
+[PASS] testExpiredReceiptFundsNextRound() (gas: 956956)
+[PASS] testFuzzRoundAccounting(uint96,uint96,uint32) (runs: 1000, μ: 590026, ~: 591194)
+[PASS] testGuardianStopsAllRoundClaims() (gas: 793577)
+[PASS] testInvalidProcessorAndFactoryCaller() (gas: 121414)
+[PASS] testMaliciousWinnerCannotReenterOrBlockNewRound() (gas: 1124565)
+[PASS] testManyUnpaidRoundsRemainIndependent() (gas: 10056698)
+[PASS] testNoDoubleSettlementAndNoEmptyRounds() (gas: 532844)
+[PASS] testNoEntryApprovalAndWrongMsgValue() (gas: 184377)
+[PASS] testPartialAndFailedTokenTransfersRollback() (gas: 441529)
+[PASS] testRejectedWinnerIndependentFromNextRoundAndRetry() (gas: 1042601)
+[PASS] testTimerExtensionCapAndSameBlock() (gas: 606749)
+[PASS] testWaitingTaxAndFirstEntry() (gas: 419851)
+[PASS] testWrongBNBAndForcedAccounting() (gas: 240109)
+Suite result: ok. 20 passed; 0 failed; 0 skipped; finished in 15.46s (15.85s CPU time)
+
+Ran 2 test suites in 15.47s (18.79s CPU time): 21 tests passed, 0 failed, 0 skipped (21 total tests)

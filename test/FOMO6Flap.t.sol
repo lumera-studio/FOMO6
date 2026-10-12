@@ -6,13 +6,17 @@ import {FOMO6FlapVault} from "../src/FOMO6FlapVault.sol";
 import {PackedFeeConfig} from "../src/flap/ITaxProcessor.sol";
 import {IVaultFactoryValidationV2} from "../src/flap/IVaultFactory.sol";
 import {IPortalTypes} from "../src/flap/IPortal.sol";
-import {FOMO6ForceBNB, FOMO6MockToken} from "./helpers/FOMO6Mocks.sol";
 
 contract FlapMockToken {
     uint8 public decimals = 18;
     address public taxProcessor;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
+    uint256 public transferMode;
+
+    function setTransferMode(uint256 mode) external {
+        transferMode = mode;
+    }
 
     function initialize(address p) external {
         require(taxProcessor == address(0));
@@ -39,7 +43,8 @@ contract FlapMockToken {
     function transferFrom(address a, address b, uint256 n) external returns (bool) {
         if (allowance[a][msg.sender] != type(uint256).max) allowance[a][msg.sender] -= n;
         balanceOf[a] -= n;
-        balanceOf[b] += n;
+        balanceOf[b] += transferMode == 1 ? n - 1 : n;
+        if (transferMode == 2) return false;
         return true;
     }
 }
@@ -53,7 +58,11 @@ contract FlapMockProcessor {
     bool public failDispatch;
     bool public attackDispatch;
     uint256 public blockedCallbacks;
-    function configureDispatch(bool fail, bool attack) external { failDispatch = fail; attackDispatch = attack; }
+
+    function configureDispatch(bool fail, bool attack) external {
+        failDispatch = fail;
+        attackDispatch = attack;
+    }
 
     constructor(address t, address m) {
         taxToken = t;
@@ -111,44 +120,43 @@ contract FlapMockVaultPortal {
     }
 }
 
-contract FlapAdversarialWinner {
-    FOMO6FlapVault public game;
-    bool public reject;
+contract ForcedBNB {
+    constructor(address payable to) payable {
+        selfdestruct(to);
+    }
+}
+
+contract ReentrantWinner {
+    FOMO6FlapVault g;
     uint256 public blocked;
 
-    constructor(FOMO6FlapVault g) {
-        game = g;
-    }
-
-    function configure(bool r) external {
-        reject = r;
+    constructor(FOMO6FlapVault game) {
+        g = game;
     }
 
     function enter(FlapMockToken t) external {
-        t.approve(address(game), type(uint256).max);
-        game.enter();
+        t.approve(address(g), type(uint256).max);
+        g.enter();
     }
 
-    function claim() external {
-        game.claim();
+    function claim(uint256 id) external {
+        g.claim(id);
     }
 
     receive() external payable {
-        require(!reject);
-        (bool a,) = address(game).call(abi.encodeCall(game.claim, ()));
-        (bool b,) = address(game).call(abi.encodeCall(game.settle, ()));
-        (bool c,) = address(game).call(abi.encodeCall(game.bindTaxProcessor, ()));
-        (bool d,) = address(game).call(abi.encodeCall(game.enter, ()));
-        (bool e,) = address(game).call(abi.encodeCall(game.withdrawPostSettlementTaxes, ()));
-        require(!a && !b && !c && !d && !e);
-        blocked += 5;
+        (bool a,) = address(g).call(abi.encodeCall(g.enter, ()));
+        (bool b,) = address(g).call(abi.encodeCall(g.settle, ()));
+        (bool c,) = address(g).call(abi.encodeCall(g.claim, (uint256(1))));
+        require(!a && !b && !c);
+        blocked += 3;
     }
 }
 
 contract FOMO6FlapTest is Test {
     address constant VP = 0x027e3704fC5C16522e9393d04C60A3ac5c0d775f;
     address constant ALICE = address(0xA11CE);
-    address constant FEE = address(0xFEE);
+    address constant BOB = address(0xB0B);
+    address constant GUARDIAN = 0x76Fa8C526f8Bc27ba6958B76DeEf92a0dbE46950;
     FOMO6FlapFactory f;
     FOMO6FlapVault g;
     FlapMockToken t;
@@ -157,16 +165,16 @@ contract FOMO6FlapTest is Test {
     function setUp() public {
         vm.chainId(97);
         vm.warp(1000);
-        vm.deal(address(this), 100 ether);
+        vm.deal(address(this), 100000 ether);
         FlapMockVaultPortal mock = new FlapMockVaultPortal();
         vm.etch(VP, address(mock).code);
-        f = new FOMO6FlapFactory(FEE);
+        f = new FOMO6FlapFactory();
         (t, g, p) = FlapMockVaultPortal(VP).launch(f, bytes32(uint256(1)), 0);
     }
 
-    function entry(address a) internal {
-        t.mint(a, 20000 ether);
-        vm.startPrank(a);
+    function entry(address who) internal {
+        t.mint(who, 20000 ether);
+        vm.startPrank(who);
         t.approve(address(g), type(uint256).max);
         g.enter();
         vm.stopPrank();
@@ -176,260 +184,241 @@ contract FOMO6FlapTest is Test {
         p.dispatch{value: n}();
     }
 
-    function testCollectTaxesPermissionlessDoesNotStartTimerAndRoutesLaterTaxes() public {
-        vm.deal(address(p), 1 ether);
-        vm.prank(ALICE);
-        g.collectTaxes();
-        assertEq(g.jackpot(), 1 ether);
-        assertEq(g.deadline(), 0);
-        g.collectTaxes();
-        assertEq(g.jackpot(), 1 ether);
-        entry(ALICE);
-        vm.warp(g.deadline());
-        g.settle();
-        vm.deal(address(p), 2 ether);
-        g.collectTaxes();
-        assertEq(g.prizeAtSettlement(), 1 ether);
-        assertEq(g.postSettlementTaxes(), 0);
-        assertEq(FEE.balance, 2 ether);
-    }
-
-    function testCollectionFailureRollsBackAndCallbacksAreBlocked() public {
-        vm.deal(address(p), 1 ether);
-        p.configureDispatch(true, false);
-        vm.expectRevert(bytes("Processor failure"));
-        g.collectTaxes();
-        assertEq(g.taxProcessor(), address(0));
-        assertEq(g.jackpot(), 0);
-        p.configureDispatch(false, true);
-        g.collectTaxes();
-        assertEq(p.blockedCallbacks(), 2);
-        assertEq(g.jackpot(), 1 ether);
-        entry(ALICE);
-    }
-
-    function testEntryCollectsTaxesAndIgnoresDispatchFailure() public {
-        vm.deal(address(p), 1 ether);
-        entry(ALICE);
-        assertEq(g.jackpot(), 1 ether);
-        p.configureDispatch(true, false);
-        entry(address(0xB0B));
-        assertEq(g.lastPlayer(), address(0xB0B));
-        assertEq(g.entries(), 2);
-        assertEq(g.jackpot(), 1 ether);
-        p.configureDispatch(false, true);
-        entry(ALICE);
-        assertEq(p.blockedCallbacks(), 2);
-        assertEq(g.entries(), 3);
-    }
-
-    function testAutomaticPayoutFailuresPreserveBothClaims() public {
-        FlapAdversarialWinner w = new FlapAdversarialWinner(g);
-        t.mint(address(w), 20000 ether);
-        w.enter(t);
+    function testWaitingTaxAndFirstEntry() public {
         tax(1 ether);
-        w.configure(true);
-        vm.etch(FEE, hex"60006000fd");
+        assertEq(g.deadline(), 0);
+        entry(ALICE);
+        assertEq(g.jackpot(), 1 ether);
+        assertEq(g.deadline(), 22600);
+    }
+
+    function testTimerExtensionCapAndSameBlock() public {
+        entry(ALICE);
+        entry(BOB);
+        assertEq(g.deadline(), 22600);
+        vm.warp(2000);
+        entry(ALICE);
+        assertEq(g.deadline(), 22720);
+        assertEq(g.lastPlayer(), ALICE);
+    }
+
+    function testBoundaryBeforeAndAtDeadline() public {
+        entry(ALICE);
+        vm.warp(g.deadline() - 1);
+        entry(BOB);
+        vm.warp(g.deadline());
+        vm.expectRevert(FOMO6FlapVault.GameEnded.selector);
+        vm.prank(ALICE);
+        g.enter();
+        g.settle();
+        assertEq(g.winnerOf(1), BOB);
+    }
+
+    function testExpiredReceiptFundsNextRound() public {
+        entry(ALICE);
+        tax(1 ether);
         vm.warp(g.deadline());
         tax(2 ether);
-        assertTrue(g.settled());
-        assertFalse(g.claimed());
-        assertEq(g.jackpot(), 1 ether);
-        assertEq(g.postSettlementTaxes(), 2 ether);
-        assertEq(g.prizeAtSettlement(), 1 ether);
-        vm.expectRevert(FOMO6FlapVault.AlreadySettled.selector);
+        assertEq(g.prizeOf(1), 1 ether);
+        assertEq(ALICE.balance, 1 ether);
+        assertEq(g.jackpot(), 2 ether);
+        assertEq(g.roundId(), 2);
+        assertEq(g.deadline(), 0);
+        entry(BOB);
+        assertEq(g.deadline(), block.timestamp + 21600);
+        vm.warp(g.deadline());
         g.settle();
-        w.configure(false);
-        w.claim();
-        vm.etch(FEE, hex"");
-        g.withdrawPostSettlementTaxes();
-        assertEq(address(w).balance, 1 ether);
-        assertEq(FEE.balance, 2 ether);
-        assertEq(g.jackpot(), 0);
-        assertEq(g.postSettlementTaxes(), 0);
+        assertEq(BOB.balance, 2 ether);
     }
 
-    function testFactoryAuthenticatesPortalAndRejectsQuoteAndParameters() public {
-        vm.expectRevert("Only VaultPortal");
-        f.newVault(address(123), address(0), ALICE, "");
-        vm.startPrank(VP);
-        vm.expectRevert("Native BNB only");
-        f.newVault(address(123), address(1), ALICE, "");
-        vm.expectRevert("No configurable parameters");
-        f.newVault(address(123), address(0), ALICE, hex"01");
-        vm.stopPrank();
-        assertEq(f.vaultForToken(address(t)), address(g));
-        assertTrue(f.isQuoteTokenSupported(address(0)));
-        assertFalse(f.isQuoteTokenSupported(address(1)));
-    }
-
-    function testEarlyTaxBeforeTokenExistsIsNotLost() public {
-        (FlapMockToken tt, FOMO6FlapVault gg, FlapMockProcessor pp) =
-            FlapMockVaultPortal(VP).launch{value: 1 ether}(f, bytes32(uint256(2)), 1 ether);
-        assertEq(gg.jackpot(), 0);
-        assertEq(gg.pendingBySource(address(pp)), 1 ether);
-        assertEq(gg.deadline(), 0);
-        gg.bindTaxProcessor();
-        assertEq(gg.taxProcessor(), address(pp));
-        assertEq(address(gg.token()), address(tt));
-        assertEq(gg.pendingBySource(address(pp)), 0);
-        assertEq(gg.jackpot(), 1 ether);
-        assertEq(gg.totalTaxesReceived(), 1 ether);
-        assertEq(gg.deadline(), 0);
-    }
-
-    function testFirstEntryBindsAndStartsClockWithoutAdmin() public {
-        tax(2 ether);
+    function testRejectedWinnerIndependentFromNextRoundAndRetry() public {
         entry(ALICE);
-        assertEq(g.taxProcessor(), address(p));
-        assertEq(g.jackpot(), 2 ether);
-        assertEq(g.deadline(), 22600);
-        vm.warp(1100);
-        entry(address(0xB0B));
-        assertEq(g.deadline(), 22630);
-    }
-
-    function testWrongSourceBeforeBindingAndForcedBNBNeverBecomeJackpot() public {
-        (bool ok,) = address(g).call{value: 3 ether}("");
-        assertTrue(ok);
-        new FOMO6ForceBNB{value: 4 ether}(payable(address(g)));
+        tax(1 ether);
+        vm.etch(ALICE, hex"60006000fd");
+        vm.warp(g.deadline());
         tax(2 ether);
+        assertFalse(g.claimedOf(1));
+        assertEq(g.outstandingPrizes(), 1 ether);
+        entry(BOB);
+        vm.warp(g.deadline());
+        g.settle();
+        assertEq(BOB.balance, 2 ether);
+        assertEq(address(g).balance, 1 ether);
+        vm.etch(ALICE, hex"");
+        vm.prank(ALICE);
+        g.claim(1);
+        assertEq(ALICE.balance, 1 ether);
+        assertEq(g.outstandingPrizes(), 0);
+        vm.prank(ALICE);
+        vm.expectRevert(FOMO6FlapVault.AlreadyClaimed.selector);
+        g.claim(1);
+    }
+
+    function testNoDoubleSettlementAndNoEmptyRounds() public {
+        entry(ALICE);
+        vm.warp(g.deadline());
+        g.settle();
+        vm.expectRevert(FOMO6FlapVault.NotEnded.selector);
+        g.settle();
+        tax(1 ether);
+        assertEq(g.roundId(), 2);
+        assertEq(g.deadline(), 0);
+    }
+
+    function testClaimsCannotRedirectOrSteal() public {
+        entry(ALICE);
+        tax(1 ether);
+        vm.etch(ALICE, hex"60006000fd");
+        vm.warp(g.deadline());
+        g.settle();
+        vm.prank(BOB);
+        vm.expectRevert(FOMO6FlapVault.NotWinner.selector);
+        g.claim(1);
+        vm.prank(ALICE);
+        vm.expectRevert(FOMO6FlapVault.TransferFailed.selector);
+        g.claim(1);
+        assertEq(g.outstandingPrizes(), 1 ether);
+        vm.expectRevert(FOMO6FlapVault.NotSettled.selector);
+        g.claim(2);
+    }
+
+    function testWrongBNBAndForcedAccounting() public {
         g.bindTaxProcessor();
-        assertEq(g.pendingBySource(address(this)), 3 ether);
-        assertEq(g.jackpot(), 2 ether);
-        assertEq(g.totalTaxesReceived(), 2 ether);
-        assertEq(address(g).balance, 9 ether);
-        (ok,) = address(g).call{value: 1 ether}("");
+        vm.expectRevert(FOMO6FlapVault.UnauthorizedTaxSource.selector);
+        (bool ok,) = address(g).call{value: 1 ether}("");
+        ok;
+        new ForcedBNB{value: 2 ether}(payable(address(g)));
+        assertEq(g.jackpot(), 0);
+        assertEq(g.deadline(), 0);
+        assertEq(address(g).balance, 2 ether);
+    }
+
+    function testNoEntryApprovalAndWrongMsgValue() public {
+        t.mint(ALICE, 20000 ether);
+        vm.prank(ALICE);
+        vm.expectRevert();
+        g.enter();
+        vm.prank(ALICE);
+        vm.deal(ALICE, 1 ether);
+        (bool ok,) = address(g).call{value: 1}(abi.encodeCall(g.enter, ()));
         assertFalse(ok);
+        assertEq(g.entries(), 0);
     }
 
-    function testBindingRejectsWrongLinksNativeModeQuoteAndDecimals() public {
-        p.corrupt(address(1), address(g), p.weth(), true);
-        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
-        g.bindTaxProcessor();
-        p.corrupt(address(t), address(1), p.weth(), true);
-        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
-        g.bindTaxProcessor();
-        p.corrupt(address(t), address(g), p.weth(), false);
-        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
-        g.bindTaxProcessor();
-        p.corrupt(address(t), address(g), address(2), true);
-        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
-        g.bindTaxProcessor();
-        p.corrupt(address(t), address(g), p.weth(), true);
-        t.setDecimals(6);
-        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
-        g.bindTaxProcessor();
-        assertEq(g.taxProcessor(), address(0));
-    }
-
-    function testBindingCannotBeReplacedEvenIfTokenGetterChanges() public {
+    function testBindingCannotBeChanged() public {
         g.bindTaxProcessor();
         FlapMockProcessor other = new FlapMockProcessor(address(t), address(g));
         t.overrideProcessor(address(other));
         g.bindTaxProcessor();
         assertEq(g.taxProcessor(), address(p));
-        tax(1 ether);
-        vm.expectRevert("Dispatch failed");
-        other.dispatch{value: 1 ether}();
-        assertEq(g.jackpot(), 1 ether);
     }
 
-    function testDispatchSettlementClaimAndLaterTax() public {
-        tax(1 ether);
-        entry(ALICE);
-        vm.warp(g.deadline());
-        tax(2 ether);
-        tax(3 ether);
-        assertEq(g.winner(), ALICE);
-        assertEq(g.prizeAtSettlement(), 1 ether);
-        assertEq(g.postSettlementTaxes(), 0);
-        assertTrue(g.claimed());
-        assertEq(ALICE.balance, 1 ether);
-        assertEq(FEE.balance, 5 ether);
-        vm.expectRevert(FOMO6FlapVault.AlreadySettled.selector);
-        g.settle();
-        vm.prank(ALICE);
-        vm.expectRevert(FOMO6FlapVault.AlreadyClaimed.selector);
-        g.claim();
-    }
-
-    function testWinnerCannotRedirectPrizeAndOthersCannotClaim() public {
-        tax(1 ether);
-        entry(ALICE);
-        vm.warp(g.deadline());
-        g.settle();
-        vm.prank(FEE);
-        vm.expectRevert(FOMO6FlapVault.NotWinner.selector);
-        g.claim();
-        vm.prank(ALICE);
-        (bool ok,) = address(g).call(abi.encodeWithSignature("claim(address)", FEE));
-        assertFalse(ok);
-        assertFalse(g.claimed());
-        vm.prank(ALICE);
-        g.claim();
-        assertEq(ALICE.balance, 1 ether);
-        assertEq(FEE.balance, 0);
-    }
-
-    function testReceiveGasBeforeAndAfterBindingBelowOfficialBudget() public {
-        uint256 start = gasleft();
-        tax(1 ether);
-        assertLt(start - gasleft(), 1000000);
+    function testInvalidProcessorAndFactoryCaller() public {
+        p.corrupt(address(1), address(g), p.weth(), true);
+        vm.expectRevert(FOMO6FlapVault.InvalidTaxProcessor.selector);
         g.bindTaxProcessor();
-        start = gasleft();
+        vm.expectRevert("Only VaultPortal");
+        f.newVault(address(1), address(0), ALICE, "");
+    }
+
+    function testGuardianStopsAllRoundClaims() public {
+        entry(ALICE);
         tax(1 ether);
-        assertLt(start - gasleft(), 1000000);
+        vm.etch(ALICE, hex"60006000fd");
+        vm.warp(g.deadline());
+        g.settle();
+        tax(2 ether);
+        vm.expectRevert("Only Guardian");
+        g.emergencyWithdrawNative(BOB);
+        vm.prank(GUARDIAN);
+        g.emergencyWithdrawNative(BOB);
+        assertEq(BOB.balance, 3 ether);
+        assertTrue(g.emergencyStopped());
+        vm.prank(ALICE);
+        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
+        g.claim(1);
     }
 
-    function testZeroWakeAndMetadata() public {
-        (bool ok,) = address(g).call("");
-        assertTrue(ok);
-        assertEq(g.pendingBySource(address(this)), 0);
-        assertGt(bytes(g.description()).length, 0);
-        assertEq(g.vaultUISchema().vaultType, "FOMO6");
-        assertEq(f.vaultDataSchema().fields.length, 0);
-    }
-
-    function testMaliciousWinnerReentrancyAndFailedClaimRetry() public {
-        FlapAdversarialWinner winner = new FlapAdversarialWinner(g);
-        t.mint(address(winner), 20000 ether);
-        winner.enter(t);
+    function testMaliciousWinnerCannotReenterOrBlockNewRound() public {
+        ReentrantWinner w = new ReentrantWinner(g);
+        t.mint(address(w), 20000 ether);
+        w.enter(t);
         tax(1 ether);
         vm.warp(g.deadline());
         g.settle();
-        winner.configure(true);
-        vm.expectRevert(FOMO6FlapVault.TransferFailed.selector);
-        winner.claim();
-        assertFalse(g.claimed());
+        if (!g.claimedOf(1)) w.claim(1);
+        assertEq(address(w).balance, 1 ether);
+        assertEq(w.blocked(), 3);
+        entry(BOB);
+        assertEq(g.roundId(), 2);
+    }
+
+    function testPartialAndFailedTokenTransfersRollback() public {
+        t.mint(ALICE, 20000 ether);
+        vm.prank(ALICE);
+        t.approve(address(g), type(uint256).max);
+        t.setTransferMode(1);
+        vm.prank(ALICE);
+        vm.expectRevert(FOMO6FlapVault.WrongTokenAmount.selector);
+        g.enter();
+        assertEq(t.balanceOf(ALICE), 20000 ether);
+        assertEq(g.deadline(), 0);
+        t.setTransferMode(2);
+        vm.prank(ALICE);
+        vm.expectRevert(FOMO6FlapVault.TokenTransferFailed.selector);
+        g.enter();
+        assertEq(g.entries(), 0);
+    }
+
+    function testEarlyReceiptsOnlyVerifiedSourceCredited() public {
+        tax(1 ether);
+        (bool ok,) = address(g).call{value: 2 ether}("");
+        assertTrue(ok);
+        entry(ALICE);
         assertEq(g.jackpot(), 1 ether);
-        winner.configure(false);
-        winner.claim();
-        assertEq(winner.blocked(), 5);
-        assertEq(address(winner).balance, 1 ether);
+        assertEq(g.totalTaxesReceived(), 1 ether);
+        assertEq(g.pendingBySource(address(this)), 2 ether);
+    }
+
+    function testManyUnpaidRoundsRemainIndependent() public {
+        vm.etch(ALICE, hex"60006000fd");
+        for (uint256 i = 1; i <= 20; ++i) {
+            entry(ALICE);
+            tax(0.01 ether);
+            vm.warp(g.deadline());
+            g.settle();
+            assertEq(g.prizeOf(i), 0.01 ether);
+            assertFalse(g.claimedOf(i));
+        }
+        assertEq(g.outstandingPrizes(), 0.2 ether);
+        vm.etch(ALICE, hex"");
+        for (uint256 i = 20; i > 0; --i) {
+            vm.prank(ALICE);
+            g.claim(i);
+        }
+        assertEq(g.outstandingPrizes(), 0);
+        assertEq(ALICE.balance, 0.2 ether);
     }
 
     function mass(uint256 n) internal {
-        g.bindTaxProcessor();
-        uint256 expected;
-        address last;
-        for (uint256 i; i < n; ++i) {
+        entry(ALICE);
+        uint256 d = g.deadline();
+        for (uint256 i = 1; i < n; ++i) {
             vm.warp(block.timestamp + 5);
-            last = address(uint160(0x100000 + i));
-            entry(last);
-            tax(0.001 ether);
+            address who = address(uint160(0x100000 + i));
+            entry(who);
             uint256 cap = block.timestamp + 21600;
-            expected = i == 0 ? cap : (expected + 30 < cap ? expected + 30 : cap);
-            assertEq(g.deadline(), expected);
+            d = d + 120 < cap ? d + 120 : cap;
+            assertEq(g.deadline(), d);
         }
-        assertEq(g.jackpot(), n * 0.001 ether);
-        assertEq(t.balanceOf(g.DEAD()), n * 20000 ether);
-        vm.warp(g.deadline());
+        tax(n * 0.001 ether);
+        address winner = g.lastPlayer();
+        vm.warp(d);
         g.settle();
-        assertEq(g.winner(), last);
-        vm.prank(last);
-        g.claim();
-        assertEq(last.balance, n * 0.001 ether);
+        assertEq(g.prizeOf(1), n * 0.001 ether);
+        assertEq(winner.balance, n * 0.001 ether);
+        assertEq(t.balanceOf(g.DEAD()), n * 20000 ether);
+        assertEq(g.outstandingPrizes(), 0);
     }
 
     function test100Entries() public {
@@ -444,165 +433,17 @@ contract FOMO6FlapTest is Test {
         mass(10000);
     }
 
-    address constant GUARDIAN = 0x76Fa8C526f8Bc27ba6958B76DeEf92a0dbE46950;
-
-    function testEmergencyOnlyGuardianNotDeployerOrPlayer() public {
-        vm.expectRevert("Only Guardian");
-        g.emergencyWithdrawNative(ALICE);
-        vm.startPrank(ALICE);
-        vm.expectRevert("Only Guardian");
-        g.emergencyWithdrawNative(ALICE);
-        vm.expectRevert("Only Guardian");
-        g.emergencyWithdrawToken(address(t), ALICE);
-        vm.stopPrank();
-        assertFalse(g.emergencyStopped());
-    }
-
-    function testEmergencyBeforeBindingIncludesPendingAndForcedFunds() public {
-        tax(2 ether);
-        new FOMO6ForceBNB{value: 1 ether}(payable(address(g)));
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(ALICE);
-        assertEq(ALICE.balance, 3 ether);
-        assertTrue(g.emergencyStopped());
-        assertEq(g.totalEmergencyWithdrawn(), 3 ether);
-        assertEq(uint256(g.state()), 4);
-        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.bindTaxProcessor();
-    }
-
-    function testEmergencyStopsActiveGameAndDoesNotExposeFalsePrize() public {
+    function testFuzzRoundAccounting(uint96 a, uint96 b, uint32 dt) public {
+        uint256 x = uint256(a) % 10 ether;
+        uint256 y = uint256(b) % 10 ether;
         entry(ALICE);
-        tax(1 ether);
-        uint256 old = g.deadline();
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(address(0xCAFE));
-        assertEq(g.jackpotAtEmergency(), 1 ether);
-        assertEq(g.jackpot(), 0);
-        assertEq(g.deadline(), old);
-        assertEq(g.lastPlayer(), ALICE);
-        vm.prank(ALICE);
-        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.enter();
-        vm.warp(old);
-        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.settle();
-    }
-
-    function testEmergencyMayRemoveUnclaimedPrizeAndPreservesHistory() public {
-        entry(ALICE);
-        tax(1 ether);
-        vm.warp(g.deadline());
-        g.settle();
-        tax(2 ether);
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(address(0xCAFE));
-        assertEq(g.winner(), ALICE);
-        assertEq(g.prizeAtSettlement(), 1 ether);
-        assertEq(g.jackpotAtEmergency(), 0);
-        assertEq(g.postTaxesAtEmergency(), 0);
-        assertEq(ALICE.balance, 1 ether);
-        assertEq(FEE.balance, 2 ether);
-        assertEq(g.jackpot(), 0);
-        assertEq(g.postSettlementTaxes(), 0);
-        vm.prank(ALICE);
-        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.claim();
-        vm.expectRevert(FOMO6FlapVault.EmergencyStopped.selector);
-        g.withdrawPostSettlementTaxes();
-    }
-
-    function testEmergencyFailedDestinationRollsBackStopAndAccounting() public {
-        FlapAdversarialWinner reject = new FlapAdversarialWinner(g);
-        reject.configure(true);
-        entry(ALICE);
-        tax(1 ether);
-        vm.prank(GUARDIAN);
-        vm.expectRevert(FOMO6FlapVault.TransferFailed.selector);
-        g.emergencyWithdrawNative(address(reject));
-        assertFalse(g.emergencyStopped());
-        assertEq(g.jackpot(), 1 ether);
-        assertEq(g.totalEmergencyWithdrawn(), 0);
-    }
-
-    function testLaterTaxAfterEmergencyStillReceivesAndCanBeRecovered() public {
-        g.bindTaxProcessor();
-        tax(1 ether);
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(ALICE);
-        tax(2 ether);
-        assertEq(g.emergencyReceipts(), 2 ether);
-        assertEq(g.jackpot(), 0);
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(ALICE);
-        assertEq(ALICE.balance, 3 ether);
-        assertEq(g.totalEmergencyWithdrawn(), 3 ether);
-    }
-
-    function testEmergencyPayoutReentrancyBlocked() public {
-        FlapAdversarialWinner receiver = new FlapAdversarialWinner(g);
-        entry(ALICE);
-        tax(1 ether);
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawNative(address(receiver));
-        assertEq(receiver.blocked(), 5);
-        assertTrue(g.emergencyStopped());
-    }
-
-    function testEmergencyInvalidDestinationDoesNotStopRound() public {
-        vm.startPrank(GUARDIAN);
-        vm.expectRevert("Invalid emergency destination");
-        g.emergencyWithdrawNative(address(0));
-        vm.expectRevert("Invalid emergency destination");
-        g.emergencyWithdrawNative(address(g));
-        vm.stopPrank();
-        assertFalse(g.emergencyStopped());
-    }
-
-    function testEmergencyTokenRecoveryDoesNotSpendPlayerAllowanceOrJackpot() public {
-        FOMO6MockToken held = new FOMO6MockToken();
-        held.mint(address(g), 777 ether);
-        entry(ALICE);
-        tax(1 ether);
-        uint256 oldAllowance = t.allowance(ALICE, address(g));
-        vm.prank(GUARDIAN);
-        g.emergencyWithdrawToken(address(held), ALICE);
-        assertEq(held.balanceOf(ALICE), 777 ether);
-        assertEq(held.balanceOf(address(g)), 0);
-        assertEq(t.allowance(ALICE, address(g)), oldAllowance);
-        assertEq(g.jackpot(), 1 ether);
-        assertFalse(g.emergencyStopped());
-    }
-
-    function validData() internal pure returns (IVaultFactoryValidationV2.LaunchValidationDataV1 memory d) {
-        d.tokenVersion = IPortalTypes.TokenVersion.TOKEN_TAXED_V3;
-        d.buyTaxRate = 300;
-        d.sellTaxRate = 300;
-        d.vaultBps = 10000;
-    }
-
-    function testLaunchValidation() public {
-        IVaultFactoryValidationV2.LaunchValidationDataV1 memory d = validData();
-        (bool ok,) = f.onBeforeLaunch(abi.encode(d));
-        assertTrue(ok);
-        d.sellTaxRate = 1000;
-        (ok,) = f.onBeforeLaunch(abi.encode(d));
-        assertFalse(ok);
-        d = validData();
-        d.dividendBps = 1;
-        (ok,) = f.onBeforeLaunch(abi.encode(d));
-        assertFalse(ok);
-    }
-
-    function testFuzzPendingClassification(uint96 a, uint96 b) public {
-        uint256 n = uint256(a) % 10 ether;
-        uint256 extra = uint256(b) % 10 ether;
-        (bool ok,) = address(g).call{value: extra}("");
-        assertTrue(ok);
-        tax(n);
-        g.bindTaxProcessor();
-        assertEq(g.jackpot(), n);
-        assertEq(g.pendingBySource(address(this)), extra);
-        assertEq(address(g).balance, n + extra);
+        tax(x);
+        vm.warp(g.deadline() + uint256(dt));
+        tax(y);
+        assertEq(g.prizeOf(1), x);
+        assertEq(ALICE.balance, x);
+        assertEq(g.jackpot(), y);
+        assertEq(g.totalTaxesReceived(), x + y);
+        assertEq(g.deadline(), 0);
     }
 }

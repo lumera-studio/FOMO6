@@ -4,3 +4,5 @@ broadcast/
 .env
 .env.*
 *.keystore
+
+.DS_Store

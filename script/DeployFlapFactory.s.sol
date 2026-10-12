@@ -6,9 +6,8 @@ import {FOMO6FlapFactory} from "../src/FOMO6FlapFactory.sol";
 contract DeployFlapFactory is Script {
     function run() external returns (FOMO6FlapFactory f) {
         require(block.chainid == 97, "BSC Testnet only");
-        address recipient = vm.envAddress("POST_SETTLEMENT_RECIPIENT");
         vm.startBroadcast();
-        f = new FOMO6FlapFactory(recipient);
+        f = new FOMO6FlapFactory();
         vm.stopBroadcast();
     }
 }

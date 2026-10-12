@@ -16,42 +16,35 @@ interface IFOMO6FlapToken {
 }
 
 /// @notice Immutable Flap vault integration candidate; not yet cleared for public launch.
-/// @dev One round. Receipts perform accounting only; binding uses verified token/processor links.
+/// @dev Independent rounds and reserved unpaid prizes; verified native tax receipts fund the next/current round.
 contract FOMO6FlapVault is VaultBaseV2 {
     using SafeERC20 for IERC20;
     uint256 public constant ENTRY_AMOUNT = 20_000 ether;
     uint256 public constant INITIAL_DURATION = 6 hours;
-    uint256 public constant EXTENSION = 30 seconds;
+    uint256 public constant EXTENSION = 120 seconds;
     address public constant DEAD = address(0xdead);
     IFOMO6FlapToken public immutable token;
     address public taxProcessor;
     mapping(address => uint256) public pendingBySource;
-    address public immutable postSettlementRecipient;
     address public lastPlayer;
-    address public winner;
+    uint256 public roundId = 1;
     uint256 public deadline;
     uint256 public entries;
     uint256 public jackpot;
-    uint256 public prizeAtSettlement;
-    uint256 public postSettlementTaxes;
     uint256 public totalTaxesReceived;
-    bool public settled;
-    bool public claimed;
+    uint256 public outstandingPrizes;
+    mapping(uint256 => address) public winnerOf;
+    mapping(uint256 => uint256) public prizeOf;
+    mapping(uint256 => bool) public claimedOf;
     bool public emergencyStopped;
-    uint256 public jackpotAtEmergency;
-    uint256 public postTaxesAtEmergency;
-    uint256 public emergencyReceipts;
     uint256 public totalEmergencyWithdrawn;
+    uint256 public emergencyReceipts;
     uint256 private locked = 1;
-    bool private collectingTaxes;
-    uint256 public constant AUTO_COLLECTION_GAS = 300_000;
-    event AutoTaxCollection(bool succeeded);
 
     enum State {
         WAITING,
         ACTIVE,
         ENDED,
-        SETTLED,
         EMERGENCY_STOPPED
     }
     error EmergencyStopped();
@@ -62,33 +55,26 @@ contract FOMO6FlapVault is VaultBaseV2 {
     error TokenTransferFailed();
     error WrongTokenAmount();
     error NotEnded();
-    error AlreadySettled();
     error NotWinner();
     error NotSettled();
     error AlreadyClaimed();
-    error InvalidRecipient();
     error TransferFailed();
 
-    event Entry(address indexed player, uint256 deadline, uint256 entries);
-    event TaxReceived(address indexed source, uint256 amount, bool afterSettlement);
-    event Settled(address indexed winner, uint256 prize);
-    event Claimed(address indexed winner, address indexed recipient, uint256 amount);
-    event PostSettlementTaxesWithdrawn(address indexed recipient, uint256 amount);
-
+    event Entry(uint256 indexed round, address indexed player, uint256 deadline, uint256 entries);
+    event TaxReceived(address indexed source, uint256 indexed round, uint256 amount);
+    event Settled(uint256 indexed round, address indexed winner, uint256 prize);
+    event Claimed(uint256 indexed round, address indexed winner, uint256 amount);
+    event AutomaticPaymentFailed(uint256 indexed round, address indexed winner, uint256 amount);
     event TaxProcessorBound(address indexed processor, uint256 pendingCredited);
+    event PendingReceipt(address indexed source, uint256 amount);
     event EmergencyWithdrawNative(address indexed to, uint256 amount);
     event EmergencyWithdrawToken(address indexed token, address indexed to, uint256 amount);
     event EmergencyReceipt(address indexed source, uint256 amount);
-    event EmergencyStop(uint256 jackpot, uint256 postSettlementTaxes);
-    event PendingReceipt(address indexed source, uint256 amount);
     error InvalidTaxProcessor();
 
-    constructor(address predictedToken, address recipient) {
-        if (predictedToken == address(0) || recipient == address(0) || recipient == address(this)) {
-            revert InvalidConfiguration();
-        }
+    constructor(address predictedToken) {
+        if (predictedToken == address(0)) revert InvalidConfiguration();
         token = IFOMO6FlapToken(predictedToken);
-        postSettlementRecipient = recipient;
     }
 
     /// @notice Anyone may verify the immutable token's processor; no address argument or setter.
@@ -116,22 +102,19 @@ contract FOMO6FlapVault is VaultBaseV2 {
     }
 
     modifier nonReentrant() {
-        if (locked != 1 || collectingTaxes) revert ReentrantCall();
+        if (locked != 1) revert ReentrantCall();
         locked = 2;
         _;
         locked = 1;
     }
 
-    /// @dev Revenue never starts the clock. Expired receipts settle and attempt bounded payments.
-    receive() external payable {
-        if (locked != 1) revert ReentrantCall();
-        // Accept the verified dispatch callback, then lock before external payments.
+    /// @dev An expired receipt settles the old round before funding the waiting next round.
+    receive() external payable nonReentrant {
         if (emergencyStopped) {
             emergencyReceipts += msg.value;
             emit EmergencyReceipt(msg.sender, msg.value);
             return;
         }
-        // Early dispatch can precede token initialization. Do not call any external contract here.
         if (taxProcessor == address(0)) {
             if (msg.value != 0) {
                 pendingBySource[msg.sender] += msg.value;
@@ -140,35 +123,16 @@ contract FOMO6FlapVault is VaultBaseV2 {
             return;
         }
         if (msg.sender != taxProcessor) revert UnauthorizedTaxSource();
-        locked = 2;
-        // Expired receipts belong to the fixed recipient, not the frozen prize.
-        if (!settled && deadline != 0 && block.timestamp >= deadline) _settle();
+        if (deadline != 0 && block.timestamp >= deadline) _settle();
         totalTaxesReceived += msg.value;
-        if (settled) postSettlementTaxes += msg.value;
-        else jackpot += msg.value;
-        emit TaxReceived(msg.sender, msg.value, settled);
-        if (settled) {
-            _tryWinnerPayment();
-            _tryPostTaxPayment();
-        }
-        locked = 1;
-    }
-
-    /// @notice Anyone may request distribution of accumulated, processed taxes.
-    /// @dev Block game actions during dispatch, but permit its native receipt callback.
-    function collectTaxes() external nonReentrant {
-        _bind();
-        collectingTaxes = true;
-        locked = 1;
-        ITaxProcessor(taxProcessor).dispatch();
-        locked = 2;
-        collectingTaxes = false;
+        jackpot += msg.value;
+        emit TaxReceived(msg.sender, roundId, msg.value);
     }
 
     /// @notice Approve at least ENTRY_AMOUNT first. Successful entries transfer directly to DEAD.
     function enter() external nonReentrant {
         _bind();
-        if (settled || (deadline != 0 && block.timestamp >= deadline)) revert GameEnded();
+        if (deadline != 0 && block.timestamp >= deadline) revert GameEnded();
         uint256 beforeDead = token.balanceOf(DEAD);
         uint256 beforePlayer = token.balanceOf(msg.sender);
         (bool ok, bytes memory result) =
@@ -188,99 +152,62 @@ contract FOMO6FlapVault is VaultBaseV2 {
         deadline = deadline == 0 || extended > cap ? cap : extended;
         lastPlayer = msg.sender;
         entries++;
-        emit Entry(msg.sender, deadline, entries);
-        // Bounded best effort: never make entry depend on processor success.
-        if (gasleft() > AUTO_COLLECTION_GAS + 60_000) {
-            collectingTaxes = true;
-            locked = 1;
-            address processor = taxProcessor;
-            bytes4 selector = ITaxProcessor.dispatch.selector;
-            bool collected;
-            assembly ("memory-safe") {
-                let ptr := mload(0x40)
-                mstore(ptr, selector)
-                collected := call(300000, processor, 0, ptr, 4, 0, 0)
-            }
-            locked = 2;
-            collectingTaxes = false;
-            emit AutoTaxCollection(collected);
-        } else {
-            emit AutoTaxCollection(false);
-        }
+        emit Entry(roundId, msg.sender, deadline, entries);
     }
 
     function state() external view returns (State) {
         if (emergencyStopped) return State.EMERGENCY_STOPPED;
-        if (settled) return State.SETTLED;
         if (deadline == 0) return State.WAITING;
         return block.timestamp < deadline ? State.ACTIVE : State.ENDED;
     }
 
+    /// @notice Anyone may settle an expired active round and attempt winner-only payment.
     function settle() external nonReentrant {
         if (emergencyStopped) revert EmergencyStopped();
-        if (settled) revert AlreadySettled();
         if (deadline == 0 || block.timestamp < deadline) revert NotEnded();
         _settle();
     }
 
     function _settle() private {
-        settled = true;
-        winner = lastPlayer;
-        prizeAtSettlement = jackpot;
-        emit Settled(winner, jackpot);
-    }
-
-    event AutomaticPaymentFailed(address indexed recipient, uint256 amount);
-
-    function _boundedPay(address recipient, uint256 amount) private returns (bool ok) {
-        assembly ("memory-safe") { ok := call(30000, recipient, amount, 0, 0, 0, 0) }
-    }
-
-    function _tryWinnerPayment() private {
-        if (claimed) return;
+        uint256 id = roundId;
+        address winner = lastPlayer;
         uint256 amount = jackpot;
-        claimed = true;
+        winnerOf[id] = winner;
+        prizeOf[id] = amount;
+        outstandingPrizes += amount;
+        roundId = id + 1;
+        deadline = 0;
+        lastPlayer = address(0);
+        entries = 0;
         jackpot = 0;
-        if (amount == 0 || _boundedPay(winner, amount)) {
-            emit Claimed(winner, winner, amount);
+        emit Settled(id, winner, amount);
+        claimedOf[id] = true;
+        outstandingPrizes -= amount;
+        bool ok = true;
+        if (amount != 0) {
+            assembly ("memory-safe") { ok := call(30000, winner, amount, 0, 0, 0, 0) }
+        }
+        if (ok) {
+            emit Claimed(id, winner, amount);
         } else {
-            claimed = false;
-            jackpot = amount;
-            emit AutomaticPaymentFailed(winner, amount);
+            claimedOf[id] = false;
+            outstandingPrizes += amount;
+            emit AutomaticPaymentFailed(id, winner, amount);
         }
     }
 
-    function _tryPostTaxPayment() private {
-        uint256 amount = postSettlementTaxes;
-        if (amount == 0) return;
-        postSettlementTaxes = 0;
-        if (_boundedPay(postSettlementRecipient, amount)) {
-            emit PostSettlementTaxesWithdrawn(postSettlementRecipient, amount);
-        } else {
-            postSettlementTaxes = amount;
-            emit AutomaticPaymentFailed(postSettlementRecipient, amount);
-        }
-    }
-
-    function claim() external nonReentrant {
+    /// @notice Only that round's winner may retry payment, exclusively to itself.
+    function claim(uint256 id) external nonReentrant {
         if (emergencyStopped) revert EmergencyStopped();
-        if (!settled) revert NotSettled();
+        if (id == 0 || id >= roundId) revert NotSettled();
+        address winner = winnerOf[id];
         if (msg.sender != winner) revert NotWinner();
-        if (claimed) revert AlreadyClaimed();
-        uint256 amount = jackpot;
-        claimed = true;
-        jackpot = 0;
+        if (claimedOf[id]) revert AlreadyClaimed();
+        uint256 amount = prizeOf[id];
+        claimedOf[id] = true;
+        outstandingPrizes -= amount;
         _pay(payable(winner), amount);
-        emit Claimed(winner, winner, amount);
-    }
-
-    /// @notice Anyone can forward post-settlement taxes, only to the fixed recipient.
-    function withdrawPostSettlementTaxes() external nonReentrant {
-        if (emergencyStopped) revert EmergencyStopped();
-        uint256 amount = postSettlementTaxes;
-        postSettlementTaxes = 0;
-        _pay(payable(postSettlementRecipient), amount);
-        emit PostSettlementTaxesWithdrawn(postSettlementRecipient, amount);
+        emit Claimed(id, winner, amount);
     }
 
     modifier onlyGuardian() {
@@ -292,14 +219,7 @@ contract FOMO6FlapVault is VaultBaseV2 {
     /// @dev Irreversible round stop. Subsequent receipts can still be recovered by Guardian.
     function emergencyWithdrawNative(address to) external onlyGuardian nonReentrant {
         require(to != address(0) && to != address(this), "Invalid emergency destination");
-        if (!emergencyStopped) {
-            emergencyStopped = true;
-            jackpotAtEmergency = jackpot;
-            postTaxesAtEmergency = postSettlementTaxes;
-            emit EmergencyStop(jackpot, postSettlementTaxes);
-            jackpot = 0;
-            postSettlementTaxes = 0;
-        }
+        emergencyStopped = true;
         uint256 amount = address(this).balance;
         totalEmergencyWithdrawn += amount;
         _pay(payable(to), amount);
@@ -320,63 +240,58 @@ contract FOMO6FlapVault is VaultBaseV2 {
     }
 
     function description() public view override returns (string memory) {
-        if (emergencyStopped) {
-            return "FOMO6: permanently stopped by Guardian emergency withdrawal. Claims are disabled.";
-        }
-        if (settled) return "FOMO6: settled; the winner can claim the fixed prize.";
-        if (deadline == 0) return "FOMO6: waiting for the first successful token entry.";
-        return block.timestamp < deadline
-            ? "FOMO6: active; last player before expiry wins."
-            : "FOMO6: ended; anyone can settle.";
+        return emergencyStopped
+            ? "FOMO6: Guardian stopped all rounds and claims."
+            : "FOMO6: repeating six-hour rounds; each entry adds 120 seconds.";
     }
 
     function vaultUISchema() public pure override returns (VaultUISchema memory schema) {
         schema.vaultType = "FOMO6";
         schema.description =
-            "20,000 tokens burned per entry. First entry starts six hours; later entries add 30 seconds, capped at six hours remaining. Only verified BNB tax revenue funds the prize. Flap Guardian can emergency-withdraw all funds and permanently stop the round.";
-        schema.methods = new VaultMethodSchema[](15);
-        string[15] memory names = [
+            "20,000 tokens sent to burn address per entry. Six-hour remaining cap, +120 seconds. New rounds start with first entry; taxes between rounds fund the next jackpot. Unpaid previous prizes are reserved. Guardian may recover all funds and stop all claims.";
+        string[16] memory names = [
             "ENTRY_AMOUNT",
+            "roundId",
             "deadline",
             "jackpot",
             "lastPlayer",
-            "winner",
-            "postSettlementTaxes",
+            "outstandingPrizes",
+            "winnerOf",
+            "prizeOf",
+            "claimedOf",
+            "emergencyStopped",
             "bindTaxProcessor",
             "enter",
             "settle",
             "claim",
-            "withdrawPostSettlementTaxes",
-            "emergencyStopped",
             "emergencyWithdrawNative",
-            "emergencyWithdrawToken",
-            "collectTaxes"
+            "emergencyWithdrawToken"
         ];
-        for (uint256 i; i < 15; ++i) {
+        schema.methods = new VaultMethodSchema[](16);
+        for (uint256 i; i < 16; ++i) {
             VaultMethodSchema memory m;
             m.name = names[i];
             m.description = names[i];
-            m.inputs = new FieldDescriptor[](i == 13 ? 2 : (i == 12 ? 1 : 0));
-            m.outputs = new FieldDescriptor[](i < 6 || i == 11 ? 1 : 0);
-            m.approvals = new ApproveAction[](0);
-            m.isWriteMethod = i >= 6 && i != 11;
-            if (i == 11) m.outputs[0] = FieldDescriptor("stopped", "bool", "Guardian emergency stop", 0);
-            if (i == 12) m.inputs[0] = FieldDescriptor("to", "address", "Guardian-selected recovery destination", 0);
-            if (i == 13) {
+            m.isWriteMethod = i >= 10;
+            m.inputs = new FieldDescriptor[](i == 15 ? 2 : (i == 6 || i == 7 || i == 8 || i == 13 || i == 14 ? 1 : 0));
+            if (m.inputs.length != 0) m.inputs[0] = FieldDescriptor("round", "uint256", "Settled round number", 0);
+            if (i == 14) m.inputs[0] = FieldDescriptor("to", "address", "Guardian recovery destination", 0);
+            if (i == 15) {
                 m.inputs[0] = FieldDescriptor("heldToken", "address", "Token to recover", 0);
-                m.inputs[1] = FieldDescriptor("to", "address", "Recovery destination", 0);
+                m.inputs[1] = FieldDescriptor("to", "address", "Guardian recovery destination", 0);
             }
-            if (i < 6) {
+            m.outputs = new FieldDescriptor[](i < 10 ? 1 : 0);
+            if (m.outputs.length != 0) {
                 m.outputs[0] = FieldDescriptor(
                     "value",
-                    i == 1 ? "time" : (i == 3 || i == 4 ? "address" : "uint256"),
+                    i == 4 || i == 6 ? "address" : (i == 8 || i == 9 ? "bool" : (i == 2 ? "time" : "uint256")),
                     names[i],
-                    i == 0 || i == 2 || i == 5 ? 18 : 0
+                    i == 0 || i == 3 || i == 5 || i == 7 ? 18 : 0
                 );
             }
+            m.approvals = new ApproveAction[](0);
             schema.methods[i] = m;
         }
-        // Fixed-price enter() has no amount input. Read ENTRY_AMOUNT and approve via the DApp.
     }
 
     function _pay(address payable recipient, uint256 amount) private {
