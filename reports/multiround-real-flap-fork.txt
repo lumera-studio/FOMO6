@@ -1,0 +1,53 @@
+Compiling 42 files with Solc 0.8.28
+Solc 0.8.28 finished in 1.42s
+Compiler run successful!
+
+Ran 5 tests for test/FOMO6FlapFork.t.sol:FOMO6FlapForkTest
+[PASS] testForkExpiredTaxPaysWinnerAndFundsNextRound() (gas: 1226505)
+Logs:
+  Fork block: 127782836
+  Vault taxes immediately after curve buy: 0
+  Processor pending after curve buy: 2700000000000000
+  Dispatch measured gas (warm fork call): 223712
+  Dispatch measured gas (warm fork call): 291044
+
+[PASS] testForkGraduatedSellReceiptSettlesAndFundsNextRound() (gas: 2621940)
+Logs:
+  Fork block: 127782836
+  Vault taxes immediately after curve buy: 0
+  Processor pending after curve buy: 2700000000000000
+  Dispatch measured gas (warm fork call): 223712
+  Token pool state after large buy: 2
+  DEX pool: 0x89C9e535060D0629ba2b56256690d71dE2198a4E
+  Dispatch measured gas (warm fork call): 172525
+  Dispatch measured gas (warm fork call): 291044
+
+[PASS] testForkGraduationSellAndDispatch() (gas: 2450389)
+Logs:
+  Fork block: 127782836
+  Vault taxes immediately after curve buy: 0
+  Processor pending after curve buy: 2700000000000000
+  Dispatch measured gas (warm fork call): 223712
+  Token pool state after large buy: 2
+  DEX pool: 0x89C9e535060D0629ba2b56256690d71dE2198a4E
+  Dispatch measured gas (warm fork call): 172525
+  Dispatch measured gas (warm fork call): 172525
+
+[PASS] testForkLaunchEntryTimerAndManualSettlement() (gas: 542779)
+Logs:
+  Fork block: 127782836
+  Vault taxes immediately after curve buy: 0
+  Processor pending after curve buy: 2700000000000000
+  Dispatch measured gas (warm fork call): 223712
+
+[PASS] testForkRejectedWinnerOldPrizeSurvivesNextRoundAndClaim() (gas: 1308262)
+Logs:
+  Fork block: 127782836
+  Vault taxes immediately after curve buy: 0
+  Processor pending after curve buy: 2700000000000000
+  Dispatch measured gas (warm fork call): 223712
+  Dispatch measured gas (warm fork call): 311517
+
+Suite result: ok. 5 passed; 0 failed; 0 skipped; finished in 6.41s (1.17s CPU time)
+
+Ran 1 test suite in 6.42s (6.41s CPU time): 5 tests passed, 0 failed, 0 skipped (5 total tests)

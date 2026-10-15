@@ -11,3 +11,7 @@ claim() -> claim(roundId). Round-indexed winnerOf/prizeOf/claimedOf replace old 
 Old source and single-round fork fixture removed from current public tree. Git history retains them. The new protocol fork suite still needs implementation/validation; historical real Flap test results must not be presented as current evidence.
 
 Local validation: 20 unit/fuzz tests, 1 invariant test (256 runs x128 calls), mass 100/1,000/10,000 entries, 20 unpaid rounds claimed in reverse order. No blockchain deployment.
+
+## 2026-10-15: real-protocol fork verification
+
+Added a new five-case multi-round real Flap fork suite; all passed at block127782836. Core game/factory source unchanged. See FORK-VERIFICATION.md for dispatch, migration, payout evidence and outstanding external-service/Testnet checks.
